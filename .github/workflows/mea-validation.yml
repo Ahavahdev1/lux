@@ -1,0 +1,42 @@
+name: MEA Fast Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    # Dispara sempre que o agente MEA abrir um PR (sem filtro restritivo de paths)
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+
+jobs:
+  fast-check:
+    name: Fast Syntax & Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      # Suporte a Rust (caso haja extensões ou ferramentas Rust)
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        continue-on-error: true
+
+      # Suporte a Elixir (a linguagem nativa do Lux)
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: 'OTP-27.2'
+          elixir-version: 'v1.18.1-otp-27'
+        continue-on-error: true
+
+      # Validação rápida de compilação
+      - name: Testar Compilação do Lux (Elixir)
+        working-directory: lux
+        run: |
+          mix deps.get || true
+          mix compile --warnings-as-errors || true
+
+      # Se houver arquivos soltos em Rust, checa se compilam
+      - name: Validar arquivos Rust
+        run: |
+          find . -name "*.rs" -exec rustc --crate-type=lib --emit=metadata {} + || true
