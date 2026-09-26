@@ -1,95 +1,62 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, Write};
 use std::path::Path;
 
-type Dependency = (String, String);
-
-struct CargoPackage {
-    name: String,
-    version: String,
-    dependencies: Vec<Dependency>,
+#[derive(Debug, Clone)]
+struct CargoToml {
+    package: Package,
+    dependencies: HashMap<String, String>,
 }
 
-impl CargoPackage {
-    fn new(name: &str, version: &str) -> Self {
-        CargoPackage {
-            name: name.to_string(),
-            version: version.to_string(),
-            dependencies: Vec::new(),
+#[derive(Debug, Clone)]
+struct Package {
+    name: String,
+    version: String,
+    authors: Vec<String>,
+}
+
+impl CargoToml {
+    fn new(name: &str, version: &str, authors: &[&str]) -> Self {
+        CargoToml {
+            package: Package {
+                name: name.to_string(),
+                version: version.to_string(),
+                authors: authors.iter().map(|&s| s.to_string()).collect(),
+            },
+            dependencies: HashMap::new(),
         }
     }
 
-    fn add_dependency(&mut self, dep_name: &str, dep_version: &str) {
-        self.dependencies.push((dep_name.to_string(), dep_version.to_string()));
+    fn add_dependency(&mut self, name: &str, version: &str) {
+        self.dependencies.insert(name.to_string(), version.to_string());
     }
 
-    fn write_to_toml(&self, path: &Path) -> Result<(), std::io::Error> {
+    fn save_to_file<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         let mut file = File::create(path)?;
         writeln!(file, "[package]")?;
-        writeln!(file, "name = \"{}\"", self.name)?;
-        writeln!(file, "version = \"{}\"", self.version)?;
-        writeln!(file, "edition = \"2018\"")?;
+        writeln!(file, "name = \"{}\"", self.package.name)?;
+        writeln!(file, "version = \"{}\"", self.package.version)?;
+        for author in &self.package.authors {
+            writeln!(file, "authors = [\"{}\"]", author)?;
+        }
         writeln!(file)?;
 
         if !self.dependencies.is_empty() {
             writeln!(file, "[dependencies]")?;
-            for (dep_name, dep_version) in &self.dependencies {
-                writeln!(file, "{} = \"{}\"", dep_name, dep_version)?;
+            for (name, version) in &self.dependencies {
+                writeln!(file, "{} = \"{}\"", name, version)?;
             }
         }
 
         Ok(())
     }
-
-    fn read_from_toml(path: &Path) -> Result<Self, std::io::Error> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        let mut package = CargoPackage::new("", "");
-        let mut in_dependencies = false;
-
-        for line in reader.lines() {
-            let line = line?;
-            if line.starts_with("[package]") {
-                continue;
-            } else if line.starts_with("[dependencies]") {
-                in_dependencies = true;
-                continue;
-            } else if line.trim().is_empty() {
-                continue;
-            }
-
-            if !in_dependencies {
-                let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
-                match parts[0] {
-                    "name" => package.name = parts[1].trim_matches('"').to_string(),
-                    "version" => package.version = parts[1].trim_matches('"').to_string(),
-                    _ => {}
-                }
-            } else {
-                let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
-                if parts.len() == 2 {
-                    package.add_dependency(parts[0], parts[1]);
-                }
-            }
-        }
-
-        Ok(package)
-    }
 }
 
-fn main() -> Result<(), std::io::Error> {
-    let mut package = CargoPackage::new("lux", "0.1.0");
-    package.add_dependency("serde", "1.0");
-    package.add_dependency("tokio", "1.0");
-
-    let path = Path::new("Cargo.toml");
-    package.write_to_toml(&path)?;
-
-    println!("Cargo.toml created successfully.");
-
-    let read_package = CargoPackage::read_from_toml(&path)?;
-    println!("Read from Cargo.toml: {:?}", read_package);
+fn main() -> io::Result<()> {
+    let mut cargo_toml = CargoToml::new("lux", "0.1.0", &["Your Name"]);
+    cargo_toml.add_dependency("serde", "1.0");
+    cargo_toml.save_to_file("Cargo.toml")?;
 
     Ok(())
 }
